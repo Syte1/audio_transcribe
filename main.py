@@ -15,7 +15,7 @@ class AudioTranscriber():
                  channels=1,
                  format=pyaudio.paInt24,
                  input=True,
-                 model_size="tiny.en",
+                 model_size="large",
                  chunk=1024
                  ):
         self.rate = rate
@@ -25,10 +25,9 @@ class AudioTranscriber():
         self.model: whisper.Whisper = self._select_model(model_size)
         self.chunk = chunk
         self.p = pyaudio.PyAudio()
-        self.filename = "output.wav"
+        self.filename = Path("output.wav")
         self.recording = False
         self.frames = []
-        self.total_frames = []
         print("Object created")
 
     def toggle_recording(self):
@@ -54,30 +53,21 @@ class AudioTranscriber():
         while self.recording:
             data = stream.read(self.chunk)
             self.frames.append(data)
-            self.total_frames.append(data)
             
             # Check if 0.5 seconds have passed
-            if time.time() - last_check >= 0.5:
+            if time.time() - last_check >= 2:
                 last_check = time.time()
 
                 # Save, transcribe, and clear frames
                 self.save_audio_temp()
-                self.frames = []
         
         stream.stop_stream()
         stream.close()
-        self.save_audio()
+        self.save_audio(self.filename)
     
     def save_audio_temp(self):
         temp_filename = self._create_random_filename()
-        with wave.open(temp_filename, 'wb') as wf:
-            wf.setnchannels(self.channels)
-            wf.setsampwidth(self.p.get_sample_size(self.format))
-            wf.setframerate(self.rate)
-            wf.writeframes(b''.join(self.frames))
-
-        self.transcribe_recording(temp_filename)
-
+        self.save_audio(temp_filename)
         # Optionally delete the temp file after transcription
         Path(temp_filename).unlink()
 
@@ -88,14 +78,14 @@ class AudioTranscriber():
         print("Type ctrl+d to cancel recording")
         keyboard.wait('ctrl+d')
         
-    def save_audio(self):
-        with wave.open(self.filename, 'wb') as wf:
+    def save_audio(self, filename: Path=Path("output.wav")):
+        with wave.open(filename, 'wb') as wf:
             wf.setnchannels(self.channels)
             wf.setsampwidth(self.p.get_sample_size(self.format))
             wf.setframerate(self.rate)
-            wf.writeframes(b''.join(self.total_frames))
+            wf.writeframes(b''.join(self.frames))
         
-        # self.transcribe_recording()
+        self.transcribe_recording(filename)
         
     @staticmethod
     def _create_random_filename() -> str:
@@ -106,9 +96,9 @@ class AudioTranscriber():
         return whisper.load_model(model, in_memory=True)
 
     def transcribe_recording(self, filename: str):
-        result = self.model.transcribe(self.filename)
+        result = self.model.transcribe(filename)
         transcription = result["text"]
-        if transcription:
+        if transcription or transcription == "you":
             print(transcription)
 
 def main():
