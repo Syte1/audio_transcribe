@@ -3,3 +3,4 @@ audio/
 *._audio
 *.wav
 test.py
+recording.*
