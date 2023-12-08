@@ -5,6 +5,8 @@ import whisper
 import threading
 import pyaudio
 import keyboard
+import numpy as np
+import uuid
 
 class AudioTranscriber():
     def __init__(self,
@@ -52,7 +54,8 @@ class AudioTranscriber():
                     
         stream.stop_stream()
         stream.close()
-        self.save_audio()
+        # self.save_audio()
+        self.save_waveform()
     
     def set_hotkey(self, hotkey):
         keyboard.add_hotkey(hotkey, self.toggle_recording, suppress=True)
@@ -68,6 +71,15 @@ class AudioTranscriber():
             wf.writeframes(b''.join(self.frames))
         
         self.transcribe_recording()
+    
+    def save_waveform(self):
+        waveform = np.frombuffer(b''.join(self.frames), dtype=np.uint8)
+        waveform = np.pad(waveform, (0, len(waveform) % 4), mode='constant')  # Pad to make it a multiple of 4
+        waveform = waveform.reshape(-1, 4)
+        waveform = waveform.view(np.int32)
+
+        audio_normalized = waveform / np.iinfo(np.int32).max
+        self.transcribe_recording(audio_normalized)
         
     @staticmethod
     def _create_filename() -> str:
@@ -77,8 +89,12 @@ class AudioTranscriber():
     def _select_model(model: str) -> whisper.Whisper:
         return whisper.load_model(model, in_memory=True)
 
-    def transcribe_recording(self):
-        result = self.model.transcribe(self.filename)
+    def transcribe_recording(self, waveform=None):
+        if waveform is None:
+            result = self.model.transcribe(self.filename)
+        else:
+            result = self.model.transcribe(waveform)
+        
         print(result["text"])
 
 def main():
