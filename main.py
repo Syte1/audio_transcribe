@@ -98,7 +98,7 @@ class AudioTranscriber():
     def transcribe_recording(self, filename: str):
         result = self.model.transcribe(filename)
         transcription = result["text"]
-        if transcription or transcription == "you":
+        if transcription:
             print(transcription)
 
 def main():
