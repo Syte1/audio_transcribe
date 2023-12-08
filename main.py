@@ -4,6 +4,7 @@ import time
 import whisper
 import threading
 import pyaudio
+import keyboard
 
 class AudioTranscriber():
     def __init__(self,
@@ -24,13 +25,13 @@ class AudioTranscriber():
         self.filename = self._create_filename()
         self.recording = False
         self.frames = []
-    
 
-    
     def toggle_recording(self):
-        self.recording = True
-        self.recording = False
-        threading.Thread(target=self.record).start()
+        self.recording = not self.recording
+        if self.recording:
+            print("Recording")
+            self.frames = [] # clear frames
+            threading.Thread(target=self.record).start()
     
     def record(self):
         stream = self.p.open(
@@ -47,7 +48,11 @@ class AudioTranscriber():
         stream.stop_stream()
         stream.close()
         self.save_audio()
-        
+    
+    def set_hotkey(self, hotkey):
+        keyboard.add_hotkey(hotkey, self.toggle_recording, suppress=True)
+        print("Type alt-c to cancel recording")
+        keyboard.wait('alt-c')
         
     def save_audio(self):
         with wave.open(self.file, 'wb') as wf:
@@ -62,7 +67,7 @@ class AudioTranscriber():
     def _create_filename() -> str:
         return "output.wav"
     
-    def _select_model(model: str) -> whisper.Whisper:
+    def _select_model(model: str, *kw) -> whisper.Whisper:
         return whisper.load_model(model)
 
     def transcribe_recording(self):
@@ -70,6 +75,8 @@ class AudioTranscriber():
         print(result["text"])
 
 def main():
-    pass
+    recorder = AudioTranscriber()
+    recorder.set_hotkey()
+
 if __name__ == "__main__":
     main()
