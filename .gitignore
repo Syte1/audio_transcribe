@@ -1,0 +1,5 @@
+env/
+audio/
+*._audio
+*.wav
+test.py
