@@ -5,8 +5,9 @@ import whisper
 import threading
 import pyaudio
 import keyboard
-import numpy as np
 import uuid
+import tempfile
+from pathlib import Path
 
 class AudioTranscriber():
     def __init__(self,
@@ -24,9 +25,10 @@ class AudioTranscriber():
         self.model: whisper.Whisper = self._select_model(model_size)
         self.chunk = chunk
         self.p = pyaudio.PyAudio()
-        self.filename = self._create_filename()
+        self.filename = "output.wav"
         self.recording = False
         self.frames = []
+        self.total_frames = []
         print("Object created")
 
     def toggle_recording(self):
@@ -48,14 +50,37 @@ class AudioTranscriber():
             frames_per_buffer=self.chunk,
             input=self.input
         )
+        last_check = time.time()
         while self.recording:
             data = stream.read(self.chunk)
             self.frames.append(data)
-                    
+            self.total_frames.append(data)
+            
+            # Check if 0.5 seconds have passed
+            if time.time() - last_check >= 0.5:
+                last_check = time.time()
+
+                # Save, transcribe, and clear frames
+                self.save_audio_temp()
+                self.frames = []
+        
         stream.stop_stream()
         stream.close()
-        # self.save_audio()
-        self.save_waveform()
+        self.save_audio()
+    
+    def save_audio_temp(self):
+        temp_filename = self._create_random_filename()
+        with wave.open(temp_filename, 'wb') as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(self.p.get_sample_size(self.format))
+            wf.setframerate(self.rate)
+            wf.writeframes(b''.join(self.frames))
+
+        self.transcribe_recording(temp_filename)
+
+        # Optionally delete the temp file after transcription
+        Path(temp_filename).unlink()
+
     
     def set_hotkey(self, hotkey):
         keyboard.add_hotkey(hotkey, self.toggle_recording, suppress=True)
@@ -68,34 +93,23 @@ class AudioTranscriber():
             wf.setnchannels(self.channels)
             wf.setsampwidth(self.p.get_sample_size(self.format))
             wf.setframerate(self.rate)
-            wf.writeframes(b''.join(self.frames))
+            wf.writeframes(b''.join(self.total_frames))
         
-        self.transcribe_recording()
-    
-    def save_waveform(self):
-        waveform = np.frombuffer(b''.join(self.frames), dtype=np.uint8)
-        waveform = np.pad(waveform, (0, len(waveform) % 4), mode='constant')  # Pad to make it a multiple of 4
-        waveform = waveform.reshape(-1, 4)
-        waveform = waveform.view(np.int32)
-
-        audio_normalized = waveform / np.iinfo(np.int32).max
-        self.transcribe_recording(audio_normalized)
+        # self.transcribe_recording()
         
     @staticmethod
-    def _create_filename() -> str:
-        return "output.wav"
+    def _create_random_filename() -> str:
+        return str(Path(tempfile.gettempdir()) / f"{uuid.uuid4()}.wav")
     
     @staticmethod
     def _select_model(model: str) -> whisper.Whisper:
         return whisper.load_model(model, in_memory=True)
 
-    def transcribe_recording(self, waveform=None):
-        if waveform is None:
-            result = self.model.transcribe(self.filename)
-        else:
-            result = self.model.transcribe(waveform)
-        
-        print(result["text"])
+    def transcribe_recording(self, filename: str):
+        result = self.model.transcribe(self.filename)
+        transcription = result["text"]
+        if transcription:
+            print(transcription)
 
 def main():
     recorder = AudioTranscriber()
