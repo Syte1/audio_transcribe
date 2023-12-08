@@ -1,43 +1,75 @@
 import wave
 import sys
-# import time
-
+import time
+import whisper
+import threading
 import pyaudio
 
+class AudioTranscriber():
+    def __init__(self,
+                 rate=48000,
+                 channels=1,
+                 format=pyaudio.paInt24,
+                 input=True,
+                 model_size="large",
+                 chunk=1024
+                 ):
+        self.rate = rate
+        self.channels = channels
+        self.format = format
+        self.input = input
+        self.model: whisper.Whisper = self._select_model(model_size)
+        self.chunk = chunk
+        self.p = pyaudio.PyAudio()
+        self.filename = self._create_filename()
+        self.recording = False
+        self.frames = []
     
-def main():
-    
-    
-    
-    CHUNK = 1024
-    print("args: ",sys.argv)
 
-    if len(sys.argv) < 2:
-        print(f'Plays a wave file. Usage: {sys.argv[0]} filename.wav')
-        sys.exit(-1)
-    with wave.open(sys.argv[1], 'rb') as wf:
-        
-        # def callback(in_data, frame_count, time_info, status):
-        #     data = wf.readframes(frame_count)
-            
-            
-        #     return (data, pyaudio.paContinue)
-        p = pyaudio.PyAudio()
-        
-        stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
-                        channels=wf.getnchannels(),
-                        rate=wf.getframerate(),
-                        output=True)
-        
-        while len(data := wf.readframes(CHUNK)):
-            stream.write(data)
-
-        # while stream.is_active():
-        #     time.sleep(.1)
-        
+    
+    def toggle_recording(self):
+        self.recording = True
+        self.recording = False
+        threading.Thread(target=self.record).start()
+    
+    def record(self):
+        stream = self.p.open(
+            format=self.format,
+            channels=self.channels,
+            rate=self.rate,
+            frames_per_buffer=self.chunk,
+            input=self.input
+        )
+        while self.recording:
+            data = stream.read(self.chunk)
+            self.frames.append(data)
+                    
+        stream.stop_stream()
         stream.close()
+        self.save_audio()
         
-        p.terminate()
+        
+    def save_audio(self):
+        with wave.open(self.file, 'wb') as wf:
+            wf.setnchannels(self.channels)
+            wf.setsampwidth(self.p.get_sample_size(self.format))
+            wf.setframerate(self.rate)
+            wf.writeframes(b''.join(self.frames))
+        
+        self.transcribe_recording()
+        
+
+    def _create_filename() -> str:
+        return "output.wav"
     
+    def _select_model(model: str) -> whisper.Whisper:
+        return whisper.load_model(model)
+
+    def transcribe_recording(self):
+        result = self.model.transcribe(self.filename)
+        print(result["text"])
+
+def main():
+    pass
 if __name__ == "__main__":
     main()
